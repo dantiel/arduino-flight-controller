@@ -12,30 +12,30 @@ void serialEventRun(){}
 
 // MPU register addresses
 #define MPU_REG_SMPLRT_DIV               0x19
-#define MPU_REG_CONFIG                   0x1A
+// #define MPU_REG_CONFIG                   0x1A
 #define MPU_REG_GYRO_CONFIG              0x1B
 #define MPU_REG_ACCEL_CONFIG             0x1C
-#define MPU_REG_INT_PIN_CFG              0x37
-#define MPU_REG_INT_ENABLE               0x38
+// #define MPU_REG_INT_PIN_CFG              0x37
+// #define MPU_REG_INT_ENABLE               0x38
 #define MPU_REG_USER_CTRL                0x6A
 #define MPU_REG_SIGNAL_PATH_RESET        0x68
 #define MPU_REG_PWR_MGMT_1               0x6B
 #define MPU_REG_ACCEL_XOUT_H             0x3B
 #define MPU_REG_GYRO_XOUT_H              0x43
-#define MPU_REG_TEMP_OUT_H               0x41
+// #define MPU_REG_TEMP_OUT_H               0x41
 
 // MPU6050 configuration parameters
 // sample rate divider, to set the sample rate of the sensor
 #define MPU_SAMPLE_RATE_DIV 0x07 // to generate the desired Sample Rate for MPU                              // external FSYNC pin sampling
-#define MPU_EXT_SYNC 0
+// #define MPU_EXT_SYNC 0
 // digital low pass filter bandwidth
-#define MPU_DLP_BW 0
+// #define MPU_DLP_BW 0
 // gyroscope full scale range
 #define MPU_GYRO_FS_RANGE 0x18 // full scale range = ± 1000 °/s
 // accelerometer full scale range
 #define MPU_ACC_FS_RANGE 0x18 // full Scale Range = ± 16 °/s
 // interrupt status bit clear by read operation
-#define MPU_INT_STAT_CLEAR 0x10 // enable
+// #define MPU_INT_STAT_CLEAR 0x10 // enable
 // set FSYNC pin active logic level
 #define MPU_FSYNC_LOGIC_LEVEL 0x80 // active low
 // set aux I2C bus access for host
@@ -53,7 +53,7 @@ void serialEventRun(){}
 // accelerometer scaling factor. This depends on MPU_ACC_FS_RANGE
 #define MPU_ACC_SCALE_FACTOR             1.5//0.488281
 
-#define CALIBRATION_COUNT      200
+#define CALIBRATION_COUNT      500
 #define MPU_I2C_ADDRESS        0x68
 #define MPU_PWR_MGMT_1         0x6B   // R/W
 #define GYRO_ADDRESS           0x68
@@ -69,89 +69,95 @@ void serialEventRun(){}
 #define ACCEL_AXIS_2   accel_pitch
 #define ACCEL_AXIS_3   accel_roll
 
-float gyro_roll_cal, gyro_pitch_cal, gyro_yaw_cal;
+// Gyro + accelerator values
 float gyro_pitch, gyro_roll, gyro_yaw;
-float accel_roll_cal, accel_pitch_cal, accel_yaw_cal;
 float accel_pitch, accel_roll, accel_yaw;
+// Calibration values
+float gyro_roll_cal, gyro_pitch_cal, gyro_yaw_cal;
+float accel_roll_cal, accel_pitch_cal, accel_yaw_cal;
 
+// Combined values (gyro + accelerator) by complementary filter
 float complementary_roll, complementary_pitch;
+
+// Input values for PID-Controller
 float roll_input, pitch_input, yaw_input;
 
-float mpu_pitch_gain = 1;
-float mpu_roll_gain = 7.5;
-float mpu_yaw_gain = 3.5;
+#define MPU_PITCH_GAIN 1.0
+#define MPU_ROLL_GAIN 7.5
+#define MPU_YAW_GAIN 3.5
 
+// derivative of time in microseconds
 unsigned long ct, dt, pt;
 
+// PID and complementary filter correction temporary values
 int forceMagnitudeApprox;
 float pid_error_temp;
 float accel_pitch_temp, accel_roll_temp;
 
-float uptake = 0.3;
-float oneMinusUptake = 1 - uptake;
+#define UPTAKE_ 0.3
+#define ONE_MINUS_UPTAKE 0.7
 
 
-// PID
+// PID-Controller
 
 float pid_i_mem_roll, pid_roll_setpoint, pid_output_roll, pid_last_roll_d_error;
 float pid_i_mem_pitch, pid_pitch_setpoint, pid_output_pitch, pid_last_pitch_d_error;
 float pid_i_mem_yaw, pid_yaw_setpoint, pid_output_yaw, pid_last_yaw_d_error;
 
-float pid_p_gain_roll = 1.10; //Gain setting for the roll P-controller (1.3)
-float pid_i_gain_roll = 0.00;//15; //Gain setting for the roll I-controller (0.0)
-float pid_d_gain_roll = 0.000;//1; //Gain setting for the roll D-controller (15)
-int   pid_max_roll = 650;    //Maximum output of the PID-controller (+/-)
-float pid_p_gain_pitch = 1.4;//3.5;//Gain setting for the pitch P-controller.
-float pid_i_gain_pitch = 0.000;//Gain setting for the pitch I-controller.
-float pid_d_gain_pitch = 0.000;//Gain setting for the pitch D-controller.
-int pid_max_pitch = 650;     //Maximum output of the PID-controller (+/-)
-float pid_p_gain_yaw = 1.5;  //Gain setting for the pitch P-controller. //4.0
-float pid_i_gain_yaw = 0.02; //Gain setting for the pitch I-controller. //0.02
-float pid_d_gain_yaw = 0.000;//1;  //Gain setting for the pitch D-controller.
-int pid_max_yaw = 650;       //Maximum output of the PID-controller (+/-)
-int pid_max_yaw_i = 100;     //Maximum value of I term of the PID-controller (+/-)
+#define PID_P_GAIN_ROLL 1.10  //Gain setting for the roll P-controller (1.3)
+#define PID_I_GAIN_ROLL 0.00  //Gain setting for the roll I-controller (0.0)
+#define PID_D_GAIN_ROLL 0.000 //1; //Gain setting for the roll D-controller (15)
+#define PID_MAX_ROLL 650      //Maximum output of the PID-controller (+/-)
+#define PID_P_GAIN_PITCH 1.4  //3.5;//Gain setting for the pitch P-controller.
+#define PID_I_GAIN_PITCH 0.000//Gain setting for the pitch I-controller.
+#define PID_D_GAIN_PITCH 0.000//Gain setting for the pitch D-controller.
+#define PID_MAX_PITCH 650     //Maximum output of the PID-controller (+/-)
+#define PID_P_GAIN_YAW 1.5    //Gain setting for the pitch P-controller. //4.0
+#define PID_I_GAIN_YAW 0.02   //Gain setting for the pitch I-controller. //0.02
+#define PID_D_GAIN_YAW 0.000  //1;  //Gain setting for the pitch D-controller.
+#define PID_MAX_YAW 650       //Maximum output of the PID-controller (+/-)
+#define PID_MAX_YAW_I 100     //Maximum value of Iterm of PID-controller(+/-)
 
 
 // RC
 
-int receiver_interrupt_pin = 2;
-int channel_amount = 6;
-PPMReader ppm(receiver_interrupt_pin, channel_amount);
+#define RECEIVER_INTERRUPT_PIN 2
+#define SERVO_LEFT_PIN 4
+#define SERVO_RIGHT_PIN 5
+#define MOTOR_PIN 6
+#define HALL_SENSOR_PIN 12
 
+#define CHANNEL_AMOUNT 6
+
+PPMReader ppm(RECEIVER_INTERRUPT_PIN, CHANNEL_AMOUNT);
+
+// stabilizer master gain
 float gain = 1.0;
 
-int gyro_mode = 0;
-volatile int rc_throttle = 900;
-volatile int rc_rudder = 1550;
+bool glide_mode = true;
+int glide_mode_throttle = 1100;
+unsigned long glide_requested_at = 0;
+int hall_sensor_status = 0;
+
+// ppm startup and failsafe values
+#define PPM1_DEFAULT_VALUE 1500  // elevator
+#define PPM2_DEFAULT_VALUE 1550  // rudder
+#define PPM3_DEFAULT_VALUE 900   // throttle
+#define PPM4_DEFAULT_VALUE 1550  // aileron   (not in use)
+#define PPM5_DEFAULT_VALUE 1000  // gyro-mode (manual/stabilize/balance)
+#define PPM6_DEFAULT_VALUE 1000  // gyro-gain (0.8 ... 2.2)
+
+volatile int rc_throttle = PPM3_DEFAULT_VALUE;
+volatile int rc_rudder   = PPM2_DEFAULT_VALUE;
 volatile int rc_rudder_stabilized = rc_rudder;
-volatile int rc_elevator = 1500;
+volatile int rc_elevator = PPM1_DEFAULT_VALUE;
 volatile int rc_elevator_stabilized = rc_elevator;
-volatile int rc_aileron = 1550;
+volatile int rc_aileron = PPM4_DEFAULT_VALUE;
 volatile int rc_aileron_stabilized = rc_aileron;
-volatile int rc_gyro_gain = 1000;
-volatile int rc_gyro_mode = 1000;
+volatile int rc_gyro_gain = PPM5_DEFAULT_VALUE;
+volatile int rc_gyro_mode = PPM6_DEFAULT_VALUE;
 
-// ppm startup values
-int ppm1_default_value = rc_elevator;
-int ppm2_default_value = rc_rudder;
-int ppm3_default_value = rc_throttle;
-int ppm4_default_value = rc_aileron;
-int ppm5_default_value = rc_gyro_mode;
-int ppm6_default_value = rc_gyro_gain;
-
-volatile int ppm1_value = ppm1_default_value;
-volatile int ppm2_value = ppm2_default_value;
-volatile int ppm3_value = ppm3_default_value;
-volatile int ppm4_value = ppm4_default_value;
-volatile int ppm5_value = ppm5_default_value;
-volatile int ppm6_value = ppm6_default_value;
-
-int servo_left_pin = 4;
-int servo_right_pin = 5;
-int motor_pin = 6;
 DigitalServo servo_left, servo_right, motor;
-
-
 
 
 void setup() {
@@ -168,18 +174,20 @@ void setup() {
     Fastwire::setup(400, true);
 #endif
     //Configure servo pins as output.
-    pinMode(servo_left_pin, OUTPUT);
-    pinMode(servo_right_pin, OUTPUT);
-    pinMode(motor_pin, OUTPUT);
-    servo_left.attach(servo_left_pin);
-    servo_right.attach(servo_right_pin);
-    motor.attach(motor_pin);
+    pinMode(SERVO_LEFT_PIN, OUTPUT);
+    pinMode(SERVO_RIGHT_PIN, OUTPUT);
+    pinMode(MOTOR_PIN, OUTPUT);
+    pinMode(HALL_SENSOR_PIN, INPUT);
+
+    servo_left.attach(SERVO_LEFT_PIN);
+    servo_right.attach(SERVO_RIGHT_PIN);
+    motor.attach(MOTOR_PIN);
 
     delay(50);
 
-    servo_left.writeMicroseconds(ppm1_value);
-    servo_right.writeMicroseconds(ppm2_value);
-    motor.writeMicroseconds(ppm3_value);
+    servo_left.writeMicroseconds(PPM1_DEFAULT_VALUE);
+    servo_right.writeMicroseconds(PPM2_DEFAULT_VALUE);
+    motor.writeMicroseconds(PPM3_DEFAULT_VALUE);
 
 #ifdef HAS_GYRO
     resetPositions();
@@ -190,64 +198,74 @@ void setup() {
 
 
 void loop() {
-    ppm1_value = ppm.rawChannelValue(1);
-    ppm2_value = ppm.rawChannelValue(2);
-    ppm3_value = ppm.rawChannelValue(3);
-    ppm4_value = ppm.rawChannelValue(4);
-    ppm5_value = ppm.rawChannelValue(5);
-    ppm6_value = ppm.rawChannelValue(6);
+    rc_elevator = ppm.rawChannelValue(1);
+    rc_rudder = ppm.rawChannelValue(2);
+    rc_throttle = ppm.rawChannelValue(3);
+    rc_aileron = ppm.rawChannelValue(4);
+    rc_gyro_mode = ppm.rawChannelValue(5);
+    rc_gyro_gain = ppm.rawChannelValue(6);
 
-
-    if (0 == ppm1_value) {
-        rc_elevator = ppm1_default_value;
-        rc_rudder = ppm2_default_value;
-        rc_throttle = ppm3_default_value;
-        rc_aileron = ppm4_default_value;
-        rc_gyro_mode = ppm5_default_value;
-        rc_gyro_gain = ppm6_default_value;
+    // arduino failsafe: reset all to default value if values not present
+    if (0 == rc_elevator) {
+        rc_elevator = PPM1_DEFAULT_VALUE;
+        rc_rudder = PPM2_DEFAULT_VALUE;
+        rc_throttle = PPM3_DEFAULT_VALUE;
+        rc_aileron = PPM4_DEFAULT_VALUE;
+        rc_gyro_mode = PPM5_DEFAULT_VALUE;
+        rc_gyro_gain = PPM6_DEFAULT_VALUE;
     }
-    else {
-        rc_elevator = ppm1_value;
-        rc_rudder = ppm2_value;
-        rc_throttle = ppm3_value;
-        rc_aileron = ppm4_value;
-        rc_gyro_mode = ppm5_value;
-        rc_gyro_gain = ppm6_value;
-    }
-    // rc_aileron = ppm4_value;
-    // rc_elevator_stabilizer_magnification = ppm.rawChannelValue(5);
-    // rc_rudder_stabilizer_magnification = ppm.rawChannelValue(6);
 
 
 #ifdef HAS_GYRO
-
-    if (rc_throttle < 1020 && rc_aileron < 1020 && rc_elevator < 1020 && rc_rudder > 1980) {
+    /*
+    ENTER CALIBRATION MODE:
+    1. Hold model in equilibrium position unmoving
+    2. Move left stick to left bottom, right stick to right bottom:
+        |    _____        _____    |
+        |   /     \      /     \   |
+        |  |   .   |    |   .   |  |
+        |  |  /    |    |    \  |  |
+        |   \˚____/      \____˚/   |
+        |                          |
+    3. Continue to still hold model unmoving for about 2 seconds
+    */
+    if (rc_throttle < 1050 && rc_aileron < 1050 && rc_elevator < 1050 && rc_rudder > 1980) {
         resetPositions();
         initMPU();
         calibrate();
     }
 
+    gain = (rc_gyro_gain / 1500.0f) * 1 + 0.2;
+#else
+    rc_gyro_mode = 1000;
+#endif
+
     ct = micros();
     dt = ct - pt;
     pt = ct;
-    //
-    if (rc_gyro_mode > 1800) {
-        gyro_mode = 2;
-    }
-    else if (rc_gyro_mode > 1400) {
-        gyro_mode = 1;
-    }
-    else {
-        gyro_mode = 0;
+
+
+    /*
+    ENTER GLIDE THROTTLE SETTING MODE:
+    1. Hold model in air ensuring that wings can move freely
+    2. Move left stick to right bottom, right stick to left bottom
+    |    _____        _____    |
+    |   /     \      /     \   |
+    |  |   .   |    |   .   |  |
+    |  |    \  |    |  /    |  |
+    |   \____˚/      \˚____/   |
+    |                          |
+    3. Let go of right stick and move throttle to desired position,
+        which is set after two exact seconds
+    */
+    if (rc_throttle < 1050 && rc_aileron < 1950 && rc_elevator < 1050 && rc_rudder > 1050) {
+        delay(2000);
+        glide_mode_throttle = ppm.rawChannelValue(3);
     }
 
-    gain = (rc_gyro_gain / 1500.0f) * 1 + 0.2;
 
-#else
-    gyro_mode = 0;
-#endif
-
-    if (gyro_mode > 0) {
+    // CH5 > 1400 --> gyro/accelerator active
+    if (rc_gyro_mode > 1400) {
         accelReadRaw();
         gyroReadRaw();
 
@@ -255,84 +273,67 @@ void loop() {
         applyInversionAndScale();
 
 #ifdef DOPRINTS
-    Serial.print(accel_pitch);
-    Serial.print(",\t");
-    Serial.print(accel_roll);
-    Serial.print(",\t");
-    Serial.print(accel_yaw);
-    Serial.print(",\t");
-    Serial.print(gyro_pitch);
-    Serial.print(",\t");
-    Serial.print(gyro_roll);
-    Serial.print(",\t");
-    Serial.print(gyro_yaw);
-    Serial.print(",\t||\t");
-    Serial.print(complementary_pitch);
-    Serial.print(",\t");
-    Serial.print(complementary_roll);
-    Serial.print(",\t");
-    Serial.println();
+    // Serial.print(accel_pitch);
+    // Serial.print(",\t");
+    // Serial.print(accel_roll);
+    // Serial.print(",\t");
+    // Serial.print(accel_yaw);
+    // Serial.print(",\t");
+    // Serial.print(gyro_pitch);
+    // Serial.print(",\t");
+    // Serial.print(gyro_roll);
+    // Serial.print(",\t");
+    // Serial.print(gyro_yaw);
+    // Serial.print(",\t||\t");
+    // Serial.print(complementary_pitch);
+    // Serial.print(",\t");
+    // Serial.print(complementary_roll);
+    // Serial.print(",\t");
+    // Serial.println();
 
 #endif
 
         applyGain();
 
-        if (gyro_mode == 1) {
-            pitch_input = (pitch_input * oneMinusUptake) + (gyro_pitch * uptake);
-            roll_input  = (roll_input * oneMinusUptake)  + (gyro_roll * uptake);
-            yaw_input   = (yaw_input * oneMinusUptake)   + (gyro_yaw * uptake);
+        // CH5 < 1800 => stabilize-mode: gyroscope enable/accelerometer disable
+        if (rc_gyro_mode < 1800) {
+            pitch_input = pitch_input * ONE_MINUS_UPTAKE + gyro_pitch * UPTAKE_;
+            roll_input  = roll_input * ONE_MINUS_UPTAKE  + gyro_roll * UPTAKE_;
+            yaw_input   = yaw_input * ONE_MINUS_UPTAKE   + gyro_yaw * UPTAKE_;
 
             pid_pitch_setpoint = rc_elevator - 1500;
             pid_roll_setpoint  = rc_rudder - 1500;
             pid_yaw_setpoint   = rc_rudder - 1500;
-
-            calculatePid();
-
-            rc_elevator_stabilized = -pid_output_pitch + 1500;
-            rc_rudder_stabilized   = -.5*pid_output_roll - .5*pid_output_yaw + 1500;
-            // rc_aileron_stabilized  = pid_output_yaw + 1500;
         }
-        else if (gyro_mode == 2) {
+        // CH5 > 1800 => balance-mode: gyroscope enable/accelerometer enable
+        else {
             complementaryFilter(accel_pitch, accel_roll, accel_yaw,
                                 gyro_pitch, gyro_roll, gyro_yaw,
                                 &complementary_pitch, &complementary_roll);
 
-            pitch_input = (pitch_input * oneMinusUptake) + (complementary_pitch * uptake);
-            roll_input  = (roll_input * oneMinusUptake)  + (complementary_roll * uptake);
-            yaw_input   = (yaw_input * oneMinusUptake)   + (gyro_yaw * uptake);
+            pitch_input = pitch_input * ONE_MINUS_UPTAKE + complementary_pitch * UPTAKE_;
+            roll_input  = roll_input * ONE_MINUS_UPTAKE  + complementary_roll * UPTAKE_;
+            yaw_input   = yaw_input * ONE_MINUS_UPTAKE   + gyro_yaw * UPTAKE_;
 
             pid_pitch_setpoint = rc_elevator - 1500;
             pid_roll_setpoint  = rc_rudder - 1500;
             pid_yaw_setpoint   = rc_rudder - 1500;
-
-            calculatePid();
-
-            rc_elevator_stabilized = -pid_output_pitch + 1500;
-            rc_rudder_stabilized   = -.5 * pid_output_roll - .5 * pid_output_yaw + 1500;
-            // rc_aileron_stabilized  = pid_output_yaw + 1500;
         }
+
+        calculatePid();
+
+        rc_elevator_stabilized = -pid_output_pitch + 1500;
+        rc_rudder_stabilized   = -.5 * pid_output_roll - .5 * pid_output_yaw + 1500;
         // rc_aileron_stabilized = pid_output_yaw + 1500;
 
     }
+    // CH5 < 1400 --> manual mode: gyroscope disable/accelerometer disable
     else {
         rc_elevator_stabilized = rc_elevator;
         rc_rudder_stabilized = rc_rudder;
     }
 
 #ifdef DOPRINTS
-    // Serial.print(ppm1_value);
-    // Serial.print(",\t");
-    // Serial.print(ppm2_value);
-    // Serial.print(",\t");
-    // Serial.print(ppm3_value);
-    // Serial.print(",\t");
-    // Serial.print(ppm4_value);
-    // Serial.print(",\t");
-    // Serial.print(ppm5_value);
-    // Serial.print(",\t");
-    // Serial.print(ppm6_value);
-    // Serial.print(",\t");
-
     // Serial.print(rc_elevator_stabilized);
     // Serial.print(",\t");
     // Serial.print(rc_rudder_stabilized);
@@ -350,12 +351,46 @@ void loop() {
     // Serial.print(rc_throttle + ((- rc_aileron_stabilized) * 0.5));
     // Serial.print(",\t");
     // Serial.print(rc_throttle - ((- rc_aileron_stabilized) * 0.5));
+    // Serial.println();
+#endif
+
+    if (glide_mode_throttle > rc_throttle) {
+        if (false == glide_mode) {
+            glide_requested_at = ct;
+            glide_mode = true;
+        }
+        if (0 == glide_requested_at) {
+            rc_throttle = 950;
+        } else if (1500000 > ct - glide_requested_at) {
+            rc_throttle = glide_mode_throttle;
+        }
+    }
+    else {
+        glide_mode = false;
+    }
+
+    hall_sensor_status = digitalRead(HALL_SENSOR_PIN);
+
+    if (LOW == hall_sensor_status && true == glide_mode) {
+        glide_requested_at = 0;
+    }
+
+#ifdef DOPRINTS
+    Serial.print(hallSensorStatus);
+    Serial.print(", \t");
+    Serial.print(glide_mode);
+    Serial.print(", \t");
+    Serial.print(rc_throttle);
     Serial.println();
 #endif
 
-    servo_left.writeMicroseconds(constrain(0.5 * reverse(rc_elevator_stabilized) + 0.5 * (rc_rudder_stabilized),870,1980));
-    servo_right.writeMicroseconds(constrain(0.5 * rc_elevator_stabilized + 0.5 * (rc_rudder_stabilized),870,1980));
-    motor.writeMicroseconds(constrain(rc_throttle,1000,2000));
+    servo_left.writeMicroseconds(constrain(
+        0.5 * reverse(rc_elevator_stabilized) + 0.5 * rc_rudder_stabilized,
+        870, 1980));
+    servo_right.writeMicroseconds(constrain(
+        0.5 * rc_elevator_stabilized + 0.5 * rc_rudder_stabilized,
+        870, 1980));
+    motor.writeMicroseconds(constrain(rc_throttle, 1000, 2000));
 }
 
 
@@ -415,12 +450,12 @@ inline void applyInversionAndScale() {
 
 
 inline void applyGain() {
-    accel_pitch *= gain * mpu_pitch_gain;
-    accel_roll *= gain * mpu_roll_gain;
-    accel_yaw *= gain * mpu_yaw_gain;
-    gyro_pitch *= gain * mpu_pitch_gain;
-    gyro_roll *= gain * mpu_roll_gain;
-    gyro_yaw *= gain * mpu_yaw_gain;
+    accel_pitch *= gain * MPU_PITCH_GAIN;
+    accel_roll *= gain * MPU_ROLL_GAIN;
+    accel_yaw *= gain * MPU_YAW_GAIN;
+    gyro_pitch *= gain * MPU_PITCH_GAIN;
+    gyro_roll *= gain * MPU_ROLL_GAIN;
+    gyro_yaw *= gain * MPU_YAW_GAIN;
 }
 
 
@@ -562,11 +597,11 @@ void i2cWriteReg(int address, byte reg, byte val) {
 void calculatePid() {
     pid_error_temp = pitch_input - pid_pitch_setpoint;
     //Pitch calculations
-    pid_i_mem_pitch += pid_i_gain_pitch * pid_error_temp;
-    pid_i_mem_pitch = constrain(pid_i_mem_pitch, -pid_max_pitch, pid_max_pitch);
+    pid_i_mem_pitch += PID_I_GAIN_PITCH * pid_error_temp;
+    pid_i_mem_pitch = constrain(pid_i_mem_pitch, -PID_MAX_PITCH, PID_MAX_PITCH);
 
-    pid_output_pitch =  pid_p_gain_pitch * pid_error_temp + pid_i_mem_pitch + pid_d_gain_pitch * (pid_error_temp - pid_last_pitch_d_error);
-    pid_output_pitch = constrain(pid_output_pitch, -pid_max_pitch, pid_max_pitch);
+    pid_output_pitch =  PID_P_GAIN_PITCH * pid_error_temp + pid_i_mem_pitch + PID_D_GAIN_PITCH * (pid_error_temp - pid_last_pitch_d_error);
+    pid_output_pitch = constrain(pid_output_pitch, -PID_MAX_PITCH, PID_MAX_PITCH);
 
     pid_last_pitch_d_error = pid_error_temp;
 
@@ -581,11 +616,11 @@ void calculatePid() {
 
     //Roll calculations
     pid_error_temp = roll_input - pid_roll_setpoint;
-    pid_i_mem_roll += pid_i_gain_roll * pid_error_temp;
-    pid_i_mem_roll = constrain(pid_i_mem_roll, -pid_max_roll, pid_max_roll);
+    pid_i_mem_roll += PID_I_GAIN_ROLL * pid_error_temp;
+    pid_i_mem_roll = constrain(pid_i_mem_roll, -PID_MAX_ROLL, PID_MAX_ROLL);
 
-    pid_output_roll =  pid_p_gain_roll * pid_error_temp + pid_i_mem_roll + pid_d_gain_roll * (pid_error_temp - pid_last_roll_d_error);
-    pid_output_roll = constrain(pid_output_roll, -pid_max_roll, pid_max_roll);
+    pid_output_roll =  PID_P_GAIN_ROLL * pid_error_temp + pid_i_mem_roll + PID_D_GAIN_ROLL * (pid_error_temp - pid_last_roll_d_error);
+    pid_output_roll = constrain(pid_output_roll, -PID_MAX_ROLL, PID_MAX_ROLL);
 
     pid_last_roll_d_error = pid_error_temp;
 
@@ -601,11 +636,11 @@ void calculatePid() {
 
     //Yaw calculations
     pid_error_temp = yaw_input - pid_yaw_setpoint;
-    pid_i_mem_yaw += pid_i_gain_yaw * pid_error_temp;
-    pid_i_mem_yaw = constrain(pid_i_mem_yaw, -pid_max_yaw_i, pid_max_yaw_i);
+    pid_i_mem_yaw += PID_I_GAIN_YAW * pid_error_temp;
+    pid_i_mem_yaw = constrain(pid_i_mem_yaw, -PID_MAX_YAW_I, PID_MAX_YAW_I);
 
-    pid_output_yaw =  pid_p_gain_yaw * pid_error_temp + pid_i_mem_yaw + pid_d_gain_yaw * (pid_error_temp - pid_last_yaw_d_error);
-    pid_output_yaw = constrain(pid_output_yaw, -pid_max_yaw, pid_max_yaw);
+    pid_output_yaw =  PID_P_GAIN_YAW * pid_error_temp + pid_i_mem_yaw + PID_D_GAIN_YAW * (pid_error_temp - pid_last_yaw_d_error);
+    pid_output_yaw = constrain(pid_output_yaw, -PID_MAX_YAW, PID_MAX_YAW);
 
     pid_last_yaw_d_error = pid_error_temp;
 
@@ -644,7 +679,6 @@ void complementaryFilter(short accel_pitch, short accel_roll, short accel_yaw,
         *pitch = *pitch * 0.98 + accel_pitch_temp * 0.02;
 
         // Turning around the Y axis results in a vector on the X-axis
-        accel_roll_temp = atan2f((float)accel_roll, (float)accel_yaw) * 180 / M_PI;
         *roll = *roll * 0.98 + accel_roll_temp * 0.02;
     }
 }
