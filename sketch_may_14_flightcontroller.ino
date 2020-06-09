@@ -135,7 +135,7 @@ PPMReader ppm(RECEIVER_INTERRUPT_PIN, CHANNEL_AMOUNT);
 float gain = 1.0;
 
 bool glide_mode = true;
-int glide_mode_throttle = 1100;
+int glide_mode_throttle = 1150;
 unsigned long glide_requested_at = 0;
 int hall_sensor_status = 0;
 
@@ -229,7 +229,7 @@ void loop() {
         |                          |
     3. Continue to still hold model unmoving for about 2 seconds
     */
-    if (rc_throttle < 1050 && rc_aileron < 1050 && rc_elevator < 1050 && rc_rudder > 1980) {
+    if (1050 > rc_throttle && 1050 > rc_aileron && 1050 > rc_elevator && 1980 < rc_rudder) {
         resetPositions();
         initMPU();
         calibrate();
@@ -258,7 +258,7 @@ void loop() {
     3. Let go of right stick and move throttle to desired position,
         which is set after two exact seconds
     */
-    if (rc_throttle < 1050 && rc_aileron < 1950 && rc_elevator < 1050 && rc_rudder > 1050) {
+    if (1050 > rc_throttle && 1950 < rc_aileron && 1050 < rc_elevator && 1050 < rc_rudder) {
         delay(2000);
         glide_mode_throttle = ppm.rawChannelValue(3);
     }
